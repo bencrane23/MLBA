@@ -7,7 +7,7 @@ st.set_page_config(page_title="NFL Win Predictor", layout="wide")
 st.title("NFL Win Predictor")
 st.caption("Upload a CSV file, look at a column, then pick two inputs and a target to see what a straight line predicts.")
 
-# one sentence about what the model is used for and what happens when it is wrong
+# one sentence about what the model is used for and what happens when it is wrong. It sits outside the if, so it always shows.
 st.write("This model estimates how many wins a team should expect from the points it scores and allows, and when it is wrong a team can look stronger or weaker than it really is, so treat the number as a rough guide, not a promise.")
 
 uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
@@ -15,6 +15,7 @@ uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
 
+    # The model needs two inputs and a target, so three numeric columns.
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if len(numeric_cols) < 3:
         st.error("This file needs at least three numeric columns.")
@@ -24,22 +25,33 @@ if uploaded_file:
     st.dataframe(df.head(), hide_index=True, width="stretch")
 
     # Chart: the user picks a chart type and a column.
+    # Line and scatter also need an x axis. A histogram only needs the column.
+    # If the file has a team column, the user can pick one team first.
+    # The chart starts on New England's wins by season.
     st.subheader("Chart")
+    chart_df = df
+    if "team" in df.columns:
+        teams = ["All teams"] + sorted(df["team"].dropna().unique().tolist())
+        team_start = teams.index("NE") if "NE" in teams else 0
+        team = st.selectbox("Team (NE is the Patriots)", teams, index=team_start)
+        if team != "All teams":
+            chart_df = df[df["team"] == team]
+
     col1, col2, col3 = st.columns(3)
     chart_type = col1.selectbox("Chart type", ["Line", "Scatter", "Histogram"])
-    variable = col2.selectbox("Column to plot", numeric_cols)
+    variable_start = numeric_cols.index("wins") if "wins" in numeric_cols else 0
+    variable = col2.selectbox("Column to plot", numeric_cols, index=variable_start)
     x_axis = col3.selectbox("X axis (line and scatter)", df.columns, disabled=chart_type == "Histogram")
 
     if chart_type == "Line":
-        fig = px.line(df, x=x_axis, y=variable, title=f"{variable} by {x_axis}")
+        fig = px.line(chart_df, x=x_axis, y=variable, title=f"{variable} by {x_axis}")
     elif chart_type == "Scatter":
-        fig = px.scatter(df, x=x_axis, y=variable, title=f"{variable} versus {x_axis}")
+        fig = px.scatter(chart_df, x=x_axis, y=variable, title=f"{variable} versus {x_axis}")
     else:
-        fig = px.histogram(df, x=variable, title=f"Distribution of {variable}")
+        fig = px.histogram(chart_df, x=variable, title=f"Distribution of {variable}")
     st.plotly_chart(fig, width="stretch")
 
     # Model: two inputs and one target.
-    # Each select box leaves out the columns already chosen.
     st.subheader("Predict")
     col1, col2, col3 = st.columns(3)
     x1_start = numeric_cols.index("scored") if "scored" in numeric_cols else 0
@@ -67,6 +79,8 @@ if uploaded_file:
     m3.metric("R2 on this data", f"{model.score(x, y):.2f}")
 
     # The user types a value for each input, and the app reads the answer from the model.
+    # The table we give to predict has the same column names, in the same order,
+    # as the training data.
     st.subheader("Try it")
     v1, v2 = st.columns(2)
     value1 = v1.number_input(f"Enter a value for {x1_col}", value=float(data[x1_col].mean()))
